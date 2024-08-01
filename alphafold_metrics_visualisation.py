@@ -168,7 +168,7 @@ def plot_plddt(data, out_dir, run_id, out_format):
     plt.ylim(0, 100)
     plt.ylabel("Predicted LDDT")
     plt.xlabel("Positions")
-    path = os.path.join(out_dir, f"pLDDT_coverage_{run_id}.{out_format}")
+    path = os.path.join(out_dir, f"pLDDT_{run_id}.{out_format}")
     plt.savefig(path)
     logging.info(f"pLDDT plot: {path}")
 
@@ -216,7 +216,7 @@ if __name__ == "__main__":
         - predicted Local Difference Distances Test (pLDDT) scores.
         - Predicted Alignment Error (PAE).
     
-    Inspired by: https://blog.biostrand.ai/explained-how-to-plot-the-prediction-quality-metrics-with-alphafold2
+    Inspired and redesigned from the work of Jasper Zuallaert: https://github.com/jasperzuallaert/VIBFold/blob/main/visualize_alphafold_results.py
     """
     parser = argparse.ArgumentParser(description=descr, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("-o", "--out", required=True, type=str, help="the path to the output directory.")
