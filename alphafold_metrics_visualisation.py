@@ -81,8 +81,9 @@ def get_models_data(input_dir):
             for g in range(5):
                 path = os.path.join(args.input, f"result_model_{f}_multimer_v2_ptm_pred_{g}.pkl")
         else:
-            # path = os.path.join(args.input, f"result_model_{f}_pred_0.pkl")
-            path = os.path.join(args.input, f"result_model_{f}.pkl")
+            path = os.path.join(args.input, f"result_model_{f}_pred_0.pkl")
+            if not os.path.exists(path):
+                path = os.path.join(args.input, f"result_model_{f}.pkl")
         data.append(pickle.load(open(path, "rb")))
     return data
 
