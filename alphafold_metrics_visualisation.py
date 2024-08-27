@@ -125,8 +125,8 @@ def get_pae_plddt(data_models):
     """
     Extract the pLDDT scores and PAE scores (if any) for each model.
 
-    :param data_models: the models' data.
-    :type data_models: dict
+    :param data_models: the models' data list.
+    :type data_models: list
     :return: the pLDDT and PAE (if any) data.
     :rtype: dict
     """
@@ -144,12 +144,14 @@ def get_pae_plddt(data_models):
     return data
 
 
-def plot_plddt(data, out_dir, run_id, out_format):
+def plot_plddt(data, data_ranking, out_dir, run_id, out_format):
     """
     Plot the Alphafold predicted Local Distance Difference Test (pLDDT) scores.
 
     :param data: the models' data.
     :type data: dict
+    :param data_ranking: the models' ranking.
+    :type data_ranking: dict
     :param out_dir: the path of the output directory.
     :type out_dir: str
     :param run_id: the alphafold run name.
@@ -162,7 +164,7 @@ def plot_plddt(data, out_dir, run_id, out_format):
     plt.title(f"Predicted LDDT per position ({run_id})")
     s = 0
     for model_name, value in data.items():
-        plddt_value = round(list(ranking_dict["plddts"].values())[s], 6)
+        plddt_value = round(list(data_ranking["plddts"].values())[s], 6)
         plt.plot(value["plddt"], label=f"{model_name} pLDDT: {plddt_value}")
         s += 1
     plt.legend()
@@ -267,7 +269,7 @@ if __name__ == "__main__":
     pae_plddt_per_model = get_pae_plddt(model_dicts)
 
     # plot the pLDDT per position
-    plot_plddt(pae_plddt_per_model, args.out, name, args.format)
+    plot_plddt(pae_plddt_per_model, ranking_dict, args.out, name, args.format)
 
     # plot the PAE if any PAE data
     if "pae" in pae_plddt_per_model[f"model_1"]:
