@@ -18,10 +18,14 @@ import pickle
 import re
 import sys
 
-import numpy as np
+from dna_features_viewer import GraphicFeature, GraphicRecord
 import matplotlib
 matplotlib.use('Agg')
+from matplotlib import rcParams
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
 
 
 def create_log(path, level):
@@ -56,35 +60,96 @@ def create_log(path, level):
     return logging
 
 
-def get_models_data(input_dir):
+def get_data_ranking(path, alphafold_version):
     """
-    Extract the models' data.
+    Get the models ranking depending on the Alphafold version.
+    pLDDT score for Alphafold2 and Ranking Score for Alphafold3.
 
-    :param input_dir: the path to the Alphafold output directory.
+    :param path: the path of the input file or directory depending on the alphafold version.
+    :type path: str
+    :param alphafold_version: the version of Alphafold.
+    :type alphafold_version: str
+    :return: the ranking data.
+    :rtype: dict
+    """
+    data = {}
+    no_match_any_file = True
+    if alphafold_version == "alphafold2":
+        data = json.load(open(os.path.join(path, "ranking_debug.json"), "r"))["plddts"]
+    else:
+        pattern_summary_confidences = re.compile(".+_summary_confidences_([0-4])\\.json")
+        for alphafold3_file in os.listdir(path):
+            match = pattern_summary_confidences.search(alphafold3_file)
+            if match:
+                no_match_any_file = False
+                model_nb = match.group(1)
+                data[f"model_{model_nb}"] = json.load(open(os.path.join(path, alphafold3_file), "r"))["ranking_score"]
+
+        if no_match_any_file:
+            logging.error(
+                f"No match with an Alphafold3 result summary confidence file found, check if the input directory is an "
+                f"Alphafold3 result directory: {args.input}")
+            sys.exit(1)
+    return data
+
+
+def get_models_data_alphafold2(input_dir):
+    """
+    Extract the Alphafold2 models' data.
+
+    :param input_dir: the path to the Alphafold2 output directory.
     :type input_dir: str
     :return: the models' extracted data.
     rtype: dict
     """
     pattern_result_multimer = re.compile("result_model_\\d_multimer_.+\\.pkl")
     is_multimer = False
-    for alphafold_file in os.listdir(input_dir):
-        match = pattern_result_multimer.search(alphafold_file)
+    for alphafold2_file in os.listdir(input_dir):
+        match = pattern_result_multimer.search(alphafold2_file)
         if match:
             is_multimer = True
             break
-    logging.info(f"{'Multimer' if is_multimer else 'Monomer'} Alphafold run detected.")
+    logging.info(f"{'Multimer' if is_multimer else 'Monomer'} Alphafold2 run detected.")
 
-    data = []
-    for f in range(1, 6):
+    data = {}
+    for model_nb in range(1, 6):
         path = None
         if is_multimer:
             for g in range(5):
-                path = os.path.join(args.input, f"result_model_{f}_multimer_v2_ptm_pred_{g}.pkl")
+                path = os.path.join(args.input, f"result_model_{model_nb}_multimer_v2_ptm_pred_{g}.pkl")
         else:
-            path = os.path.join(args.input, f"result_model_{f}_pred_0.pkl")
+            path = os.path.join(args.input, f"result_model_{model_nb}_pred_0.pkl")
             if not os.path.exists(path):
-                path = os.path.join(args.input, f"result_model_{f}.pkl")
-        data.append(pickle.load(open(path, "rb")))
+                path = os.path.join(args.input, f"result_model_{model_nb}.pkl")
+        data[model_nb] = pickle.load(open(path, "rb"))
+
+    return data
+
+
+def get_models_data_alphafold3(input_dir):
+    """
+    Extract the Alphafold3 models' data.
+
+    :param input_dir: the path to the Alphafold3 output directory.
+    :type input_dir: str
+    :return: the models' extracted data.
+    rtype: dict
+    """
+    data = {}
+    no_match_any_file = True
+    pattern_full_data = re.compile(".+_full_data_([0-4])\\.json")
+    for alphafold3_file in os.listdir(input_dir):
+        match = pattern_full_data.search(alphafold3_file)
+        if match:
+            no_match_any_file = False
+            model_nb = match.group(1)
+            data[model_nb] = json.load(open(os.path.join(input_dir, alphafold3_file), "r"))
+
+    if no_match_any_file:
+        logging.error(f"No match with an Alphafold3 full data result file found, check if the input directory is an "
+                      f"Alphafold3 result directory: {args.input}")
+        sys.exit(1)
+
     return data
 
 
@@ -121,30 +186,38 @@ def plot_msa_with_coverage(msa_data, out_dir, run_id, out_format):
     logging.info(f"MSA coverage plot: {path}")
 
 
-def get_pae_plddt(data_models):
+def get_pae_plddt(data_models, alphafold_version):
     """
-    Extract the pLDDT scores and PAE scores (if any) for each model.
+    Extract the pLDDT scores and PAE scores (if any for Alphafold2) for each model.
 
-    :param data_models: the models' data list.
-    :type data_models: list
+    :param data_models: the models' data.
+    :type data_models: dict
+    :param alphafold_version: the version of Alphafold.
+    :type alphafold_version: str
     :return: the pLDDT and PAE (if any) data.
     :rtype: dict
     """
     data = {}
     add_pae = True
-    if "predicted_aligned_error" not in data_models[0].keys():
+    data_first_model_keys = data_models[list(data_models.keys())[0]].keys()
+    if alphafold_version == "alphafold2" and "predicted_aligned_error" not in data_first_model_keys:
         add_pae = False
         logging.warning("No Predicted Alignement Error (PAE) values in the Alphafold models, the PAE plots will not be "
                         "produced.")
-    for idx, val in enumerate(data_models):
+    plddt_key = "atom_plddts"
+    pae_key = "pae"
+    if alphafold_version == "alphafold2":
+        plddt_key = "plddt"
+        pae_key = "predicted_aligned_error"
+    for model_nb, val in data_models.items():
+        data[f"model_{model_nb}"] = {"plddt": val[plddt_key]}
         if add_pae:
-            data[f"model_{idx + 1}"] = {"plddt": val["plddt"], "pae": val["predicted_aligned_error"]}
-        else:
-            data[f"model_{idx + 1}"] = {"plddt": val["plddt"]}
+            data[f"model_{model_nb}"]["pae"] = val[pae_key]
+
     return data
 
 
-def plot_plddt(data, data_ranking, out_dir, run_id, out_format):
+def plot_plddt(data, data_ranking, out_dir, run_id, out_format, alphafold_version):
     """
     Plot the Alphafold predicted Local Distance Difference Test (pLDDT) scores.
 
@@ -156,17 +229,24 @@ def plot_plddt(data, data_ranking, out_dir, run_id, out_format):
     :type out_dir: str
     :param run_id: the alphafold run name.
     :type run_id: str
-    :param out_format: the output out_format.
+    :param out_format: the output format.
     :type out_format: str
+    :param alphafold_version: the version of Alphafold.
+    :type alphafold_version: str
     """
     plt.clf()
     plt.subplots()
-    plt.title(f"Predicted LDDT per position ({run_id})")
-    s = 0
+    plt.suptitle(f"Predicted LDDT per position")
+    plt.title(run_id)
+    model_index = 0
     for model_name, value in data.items():
-        plddt_value = round(list(data_ranking["plddts"].values())[s], 6)
-        plt.plot(value["plddt"], label=f"{model_name} pLDDT: {plddt_value}")
-        s += 1
+        if alphafold_version == "alphafold2":
+            plddt_value = round(list(data_ranking.values())[model_index], 6)
+            plt.plot(value["plddt"], label=f"{model_name.replace('_', ' ')} pLDDT: {plddt_value}")
+        else:
+            ranking_score = list(data_ranking.values())[model_index]
+            plt.plot(value["plddt"], label=f"{model_name} Ranking Score: {ranking_score}")
+        model_index += 1
     plt.legend()
     plt.ylim(0, 100)
     plt.ylabel("Predicted LDDT")
@@ -176,7 +256,7 @@ def plot_plddt(data, data_ranking, out_dir, run_id, out_format):
     logging.info(f"pLDDT plot: {path}")
 
 
-def plot_pae(data, out_dir, run_id, out_format):
+def plot_pae(data, out_dir, run_id, out_format, domains_path):
     """
     Plot the Alphafold Predicted Alignment Error (PAE) scores.
 
@@ -188,20 +268,46 @@ def plot_pae(data, out_dir, run_id, out_format):
     :type run_id: str
     :param out_format: the output out_format.
     :type out_format: str
+    :param domains_path: the domains' coordinates and info file path.
+    :type domains_path: str
     """
-    plt.clf()
-    plt.subplots()
-    plt.title(f"Predicted Alignment Error ({run_id})")
-    num_models = len(data)
-    plt.figure(figsize=(3 * num_models, 2), dpi=100)
-    for n, (model_name, value) in enumerate(data.items()):
-        plt.subplot(1, num_models, n + 1)
-        plt.imshow(value["pae"], label=model_name, cmap="bwr", vmin=0, vmax=30)
-        plt.colorbar()
+    models = sorted(list(data.keys()))
+    domains = None
+    if domains_path is not None:
+        try:
+            domains = pd.read_csv(args.domains)
+        except FileNotFoundError as exc:
+            logging.error(exc)
+            sys.exit(1)
 
-    path = os.path.join(out_dir, f"PAE_{run_id}.{out_format}")
-    plt.savefig(path)
-    logging.info(f"PAE plot: {path}")
+    for model in models:
+        plt.clf()
+        if domains is not None:
+            fig, (ax0, ax1) = plt.subplots(2, 1, layout="tight", height_ratios=[5, 1], sharex=True)
+        else:
+            fig, ax0 = plt.subplots(1, 1)
+        fig.suptitle(f"Predicted Alignment Error {model.replace('_', ' ')}", fontsize="large", fontweight="bold")
+        heatmap = ax0.imshow(data[model]["pae"], label=model, cmap="bone", vmin=0, vmax=30)
+        fig.colorbar(heatmap, ax=ax0, label="Expected Position Error (\u212B)")
+        ax0.set_title(run_id)
+        ax0.set_xlabel("Scored Residue")
+        ax0.set_ylabel("Aligned Residue")
+        ax0.set_xlim(1, len(data[model]["pae"]) + 1)
+        ax0.set_ylim(len(data[model]["pae"]) + 1, 1)
+
+        # Domains plot
+        if domains is not None:
+            features = []
+            row = None
+            for _, row in domains.iterrows():
+                features.append(GraphicFeature(start=row["start"], end=row["end"], strand=+1, color=row["color"],
+                                               label=row["domain"]))
+            record = GraphicRecord(sequence_length=row["end"] + 1, features=features, plots_indexing="genbank")
+            record.plot(ax=ax1)
+
+        path = os.path.join(out_dir, f"PAE_{model.replace('_', '-')}_{run_id}.{out_format}")
+        plt.savefig(path)
+        logging.info(f"PAE plot {model.replace('_', ' ')}: {path}")
 
 
 if __name__ == "__main__":
@@ -221,9 +327,16 @@ if __name__ == "__main__":
     
     Inspired and redesigned from the work of Jasper Zuallaert: https://github.com/jasperzuallaert/VIBFold/blob/main/visualize_alphafold_results.py
     """
-    parser = argparse.ArgumentParser(description=descr, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("-o", "--out", required=True, type=str, help="the path to the output directory.")
-    parser.add_argument("-y", "--format", required=False, default="svg",
+    parent_parser = argparse.ArgumentParser()
+    parent_parser.add_argument("-o", "--out", required=True, type=str, help="the path to the output directory.")
+    parent_parser.add_argument("-d", "--domains", required=False, type=str,
+                               help="the path to the CSV domains file. The domains file is used in the RMSF plot to "
+                                    "display a map of the domains. If the mask do not cover all the domains in the "
+                                    "file, the domains argument should not be used. the domains file is a comma "
+                                    "separated file, the first column is the annotation name, the 2nd is the residue "
+                                    "start coordinate, the 3rd is the residue end coordinate, the last one is the "
+                                    "color to apply in hexadecimal format. The coordinate are 1-indexed.")
+    parent_parser.add_argument("-y", "--format", required=False, default="svg",
                         choices=["eps", "jpg", "jpeg", "pdf", "pgf", "png", "ps", "raw", "svg", "svgz", "tif", "tiff"],
                         help="the output plots out_format: 'eps': 'Encapsulated Postscript', "
                              "'jpg': 'Joint Photographic Experts Group', 'jpeg': 'Joint Photographic Experts Group', "
@@ -232,16 +345,32 @@ if __name__ == "__main__":
                              "'rgba': 'Raw RGBA bitmap', 'svg': 'Scalable Vector Graphics', "
                              "'svgz': 'Scalable Vector Graphics', 'tif': 'Tagged Image File Format', "
                              "'tiff': 'Tagged Image File Format'. Default is 'svg'.")
-    parser.add_argument("-l", "--log", required=False, type=str,
+    parent_parser.add_argument("-l", "--log", required=False, type=str,
                         help="the path for the log file. If this option is skipped, the log file is created in the "
                              "output directory.")
-    parser.add_argument("--log-level", required=False, type=str,
+    parent_parser.add_argument("--log-level", required=False, type=str,
                         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
                         help="set the log level. If the option is skipped, log level is INFO.")
-    parser.add_argument("--version", action="version", version=__version__)
-    parser.add_argument("input", type=str,
+    parent_parser.add_argument("--version", action="version", version=__version__)
+    parent_parser.add_argument("input", type=str,
                         help="the path to the Alphafold prediction directory.")
+
+    # add subparser for the different Alphafold versions
+    parser = argparse.ArgumentParser(description=descr, formatter_class=argparse.RawDescriptionHelpFormatter)
+    subparsers = parser.add_subparsers(title="Alphafold version used", dest="alphafold_version",
+                                       help="the Alphafold version used.")
+
+    # Alphafold2
+    parser_alphafold2 = subparsers.add_parser("alphafold2", parents=[parent_parser], add_help=False,
+                                              help="use the Alphafold2 outputs.")
+
+    # Alphafold3
+    parser_alphafold3 = subparsers.add_parser("alphafold3", parents=[parent_parser], add_help=False,
+                                              help="use the Alphafold3 outputs.")
+
     args = parser.parse_args()
+
+    rcParams["figure.figsize"] = 15, 12
 
     # create output directory if necessary
     os.makedirs(args.out, exist_ok=True)
@@ -257,20 +386,27 @@ if __name__ == "__main__":
 
     # extract the data
     name = os.path.basename(os.path.normpath(args.input))
-    logging.info(f"Alphafold metrics visualisation for {name}.")
-    ranking_dict = json.load(open(os.path.join(args.input, "ranking_debug.json"), "r"))
-    feature_dict = pickle.load(open(os.path.join(args.input, "features.pkl"), "rb"))
-    model_dicts = get_models_data(args.input)
+    logging.info(f"{args.alphafold_version.capitalize()} metrics visualisation for {name}.")
 
-    # plot the MSA with coverage
-    plot_msa_with_coverage(feature_dict["msa"], args.out, name, args.format)
+    model_dicts = None
+    ranking_dict =get_data_ranking(args.input, args.alphafold_version)
+
+    if args.alphafold_version == "alphafold2":
+        feature_dict = pickle.load(open(os.path.join(args.input, "features.pkl"), "rb"))
+
+        model_dicts = get_models_data_alphafold2(args.input)
+
+        # plot the MSA with coverage
+        plot_msa_with_coverage(feature_dict["msa"], args.out, name, args.format)
+    elif args.alphafold_version == "alphafold3":
+        model_dicts = get_models_data_alphafold3(args.input)
 
     # get the pLLDT and PAE values per model
-    pae_plddt_per_model = get_pae_plddt(model_dicts)
+    pae_plddt_per_model = get_pae_plddt(model_dicts, args.alphafold_version)
 
     # plot the pLDDT per position
-    plot_plddt(pae_plddt_per_model, ranking_dict, args.out, name, args.format)
+    plot_plddt(pae_plddt_per_model, ranking_dict, args.out, name, args.format, args.alphafold_version)
 
     # plot the PAE if any PAE data
     if "pae" in pae_plddt_per_model[f"model_1"]:
-        plot_pae(pae_plddt_per_model, args.out, name, args.format)
+        plot_pae(pae_plddt_per_model, args.out, name, args.format, args.domains)
