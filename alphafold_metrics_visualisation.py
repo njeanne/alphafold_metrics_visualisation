@@ -25,7 +25,6 @@ from matplotlib import rcParams
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
 
 
 def create_log(path, level):
@@ -90,6 +89,7 @@ def get_data_ranking(path, alphafold_version):
                 f"No match with an Alphafold3 result summary confidence file found, check if the input directory is an "
                 f"Alphafold3 result directory: {args.input}")
             sys.exit(1)
+
     return data
 
 
@@ -283,20 +283,8 @@ def plot_pae(data, out_dir, run_id, out_format, domains_path):
     for model in models:
         plt.clf()
         if domains is not None:
-            fig, (ax0, ax1) = plt.subplots(2, 1, layout="tight", height_ratios=[5, 1], sharex=True)
-        else:
-            fig, ax0 = plt.subplots(1, 1)
-        fig.suptitle(f"Predicted Alignment Error {model.replace('_', ' ')}", fontsize="large", fontweight="bold")
-        heatmap = ax0.imshow(data[model]["pae"], label=model, cmap="bone", vmin=0, vmax=30)
-        fig.colorbar(heatmap, ax=ax0, label="Expected Position Error (\u212B)")
-        ax0.set_title(run_id)
-        ax0.set_xlabel("Scored Residue")
-        ax0.set_ylabel("Aligned Residue")
-        ax0.set_xlim(1, len(data[model]["pae"]) + 1)
-        ax0.set_ylim(len(data[model]["pae"]) + 1, 1)
-
-        # Domains plot
-        if domains is not None:
+            # Add the domains' plot
+            fig, (ax0, ax1) = plt.subplots(2, 1, height_ratios=[5, 1], sharex=True)
             features = []
             row = None
             for _, row in domains.iterrows():
@@ -304,6 +292,22 @@ def plot_pae(data, out_dir, run_id, out_format, domains_path):
                                                label=row["domain"]))
             record = GraphicRecord(sequence_length=row["end"] + 1, features=features, plots_indexing="genbank")
             record.plot(ax=ax1)
+        else:
+            fig, ax0 = plt.subplots(1, 1)
+
+        fig.suptitle(f"Predicted Alignment Error {model.replace('_', ' ')}:\n{run_id}", fontsize="large",
+                     fontweight="bold")
+        heatmap = ax0.imshow(data[model]["pae"], label=model, cmap="bone", vmin=0, vmax=30)
+        fig.colorbar(heatmap, ax=ax0, label="Expected Position Error (\u212B)")
+        ax0.set_xlabel("Scored Residue")
+        ax0.set_ylabel("Aligned Residue")
+        ax0.set_ylim(len(data[model]["pae"]) + 1, 1)
+
+        plt.tight_layout()
+        if domains is not None:
+            # shrink the domains' X axis to the heatmap X axis size
+            ax0_positions, ax1_positions = ax0.get_position(), ax1.get_position()
+            ax1.set_position([ax0_positions.x0, ax1_positions.y0, ax0_positions.width, ax1_positions.height])
 
         path = os.path.join(out_dir, f"PAE_{model.replace('_', '-')}_{run_id}.{out_format}")
         plt.savefig(path)
