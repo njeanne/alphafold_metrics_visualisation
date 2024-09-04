@@ -89,6 +89,8 @@ def get_data_ranking(path, alphafold_version):
                 f"No match with an Alphafold3 result summary confidence file found, check if the input directory is an "
                 f"Alphafold3 result directory: {args.input}")
             sys.exit(1)
+    # order from the lowest to the highest to print the model with the highest value on top of the others
+    data = dict(sorted(data.items(), key=lambda item: item[1], reverse=False))
 
     return data
 
@@ -239,13 +241,13 @@ def plot_plddt(data, data_ranking, out_dir, run_id, out_format, alphafold_versio
     plt.suptitle(f"Predicted LDDT per position")
     plt.title(run_id)
     model_index = 0
-    for model_name, value in data.items():
+    for model_name in data_ranking.keys():
         if alphafold_version == "alphafold2":
             plddt_value = round(list(data_ranking.values())[model_index], 6)
-            plt.plot(value["plddt"], label=f"{model_name.replace('_', ' ')} pLDDT: {plddt_value}")
+            plt.plot(data[model_name]["plddt"], label=f"{model_name.replace('_', ' ')} pLDDT: {plddt_value}")
         else:
             ranking_score = list(data_ranking.values())[model_index]
-            plt.plot(value["plddt"], label=f"{model_name} Ranking Score: {ranking_score}")
+            plt.plot(data[model_name]["plddt"], label=f"{model_name} Ranking Score: {ranking_score}")
         model_index += 1
     plt.legend()
     plt.ylim(0, 100)
@@ -393,7 +395,7 @@ if __name__ == "__main__":
     logging.info(f"{args.alphafold_version.capitalize()} metrics visualisation for {name}.")
 
     model_dicts = None
-    ranking_dict =get_data_ranking(args.input, args.alphafold_version)
+    ranking_dict = get_data_ranking(args.input, args.alphafold_version)
 
     if args.alphafold_version == "alphafold2":
         feature_dict = pickle.load(open(os.path.join(args.input, "features.pkl"), "rb"))
