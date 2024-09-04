@@ -175,7 +175,7 @@ def plot_msa_with_coverage(msa_data, out_dir, run_id, out_format):
     final = non_gaps[seq_id_sort] * seq_id[seq_id_sort, None]
 
     plt.subplots()
-    plt.title(f"Sequence coverage ({run_id})")
+    plt.suptitle(f"Sequence coverage:\n{run_id}", fontsize="large", fontweight="bold")
     plt.imshow(final, interpolation="nearest", aspect="auto", cmap="rainbow_r", vmin=0, vmax=1, origin="lower")
     plt.plot((msa_data != 21).sum(0), color="black")
     plt.xlim(-0.5, msa_data.shape[1] - 0.5)
@@ -183,6 +183,7 @@ def plot_msa_with_coverage(msa_data, out_dir, run_id, out_format):
     plt.colorbar(label="Sequence identity to query")
     plt.xlabel("Positions")
     plt.ylabel("Sequences")
+    plt.tight_layout()
     path = os.path.join(out_dir, f"msa_coverage_{run_id}.{out_format}")
     plt.savefig(path)
     logging.info(f"MSA coverage plot: {path}")
@@ -238,8 +239,8 @@ def plot_plddt(data, data_ranking, out_dir, run_id, out_format, alphafold_versio
     """
     plt.clf()
     plt.subplots()
-    plt.suptitle(f"Predicted LDDT per position")
-    plt.title(run_id)
+    plt.suptitle("Predicted LDDT per position", fontsize="large", fontweight="bold")
+    plt.title(run_id, fontsize="large", fontweight="bold")
     model_index = 0
     for model_name in data_ranking.keys():
         if alphafold_version == "alphafold2":
@@ -327,7 +328,7 @@ if __name__ == "__main__":
     Distributed on an "AS IS" basis without warranties or conditions of any kind, either express or implied.
 
     Create the metrics visualisation plots for the 5 Alphafold predicted models:
-        - Multiple Sequence Alignment (MSA) with coverage.
+        - Multiple Sequence Alignment (MSA) with coverage (Alphafold2 data only).
         - predicted Local Difference Distances Test (pLDDT) scores.
         - Predicted Alignment Error (PAE).
     
@@ -358,8 +359,6 @@ if __name__ == "__main__":
                         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
                         help="set the log level. If the option is skipped, log level is INFO.")
     parent_parser.add_argument("--version", action="version", version=__version__)
-    parent_parser.add_argument("input", type=str,
-                        help="the path to the Alphafold prediction directory.")
 
     # add subparser for the different Alphafold versions
     parser = argparse.ArgumentParser(description=descr, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -369,10 +368,14 @@ if __name__ == "__main__":
     # Alphafold2
     parser_alphafold2 = subparsers.add_parser("alphafold2", parents=[parent_parser], add_help=False,
                                               help="use the Alphafold2 outputs.")
+    parser_alphafold2.add_argument("input", type=str,
+                                   help="the path to the Alphafold2 modeling directory.")
 
     # Alphafold3
     parser_alphafold3 = subparsers.add_parser("alphafold3", parents=[parent_parser], add_help=False,
                                               help="use the Alphafold3 outputs.")
+    parser_alphafold3.add_argument("input", type=str,
+                                  help="the path to the Alphafold3 modeling directory.")
 
     args = parser.parse_args()
 
