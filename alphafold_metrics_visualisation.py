@@ -120,7 +120,7 @@ def get_models_data_alphafold2(input_dir):
             for g in range(5):
                 path = os.path.join(args.input, f"result_model_{model_nb}_multimer_v2_ptm_pred_{g}.pkl")
         else:
-            path = os.path.join(args.input, f"result_model_{model_nb}_pred_0.pkl")
+            path = os.path.join(args.input, f"result_model_{model_nb}_ptm_pred_0.pkl")
             if not os.path.exists(path):
                 path = os.path.join(args.input, f"result_model_{model_nb}.pkl")
         data[model_nb] = pickle.load(open(path, "rb"))
@@ -242,8 +242,16 @@ def plot_plddt(data, data_ranking, out_dir, run_id, out_format, alphafold_versio
     plt.suptitle("Predicted LDDT per position", fontsize="large", fontweight="bold")
     plt.title(run_id, fontsize="large", fontweight="bold")
     model_index = 0
+    pattern_model_alphafold2 = re.compile("(model_\\d)_ptm_pred_\\d")
     for model_name in data_ranking.keys():
         if alphafold_version == "alphafold2":
+            match = pattern_model_alphafold2.search(model_name)
+            if match:
+                model_name = match.group(1)
+            else:
+                logging.error(f"No match for the model name \"{model_name}\" with the pattern "
+                              f"{pattern_model_alphafold2.pattern}")
+                sys.exit(1)
             plddt_value = round(list(data_ranking.values())[model_index], 6)
             plt.plot(data[model_name]["plddt"], label=f"{model_name.replace('_', ' ')} pLDDT: {plddt_value}")
         else:
@@ -337,12 +345,12 @@ if __name__ == "__main__":
     parent_parser = argparse.ArgumentParser()
     parent_parser.add_argument("-o", "--out", required=True, type=str, help="the path to the output directory.")
     parent_parser.add_argument("-d", "--domains", required=False, type=str,
-                               help="the path to the CSV domains file. The domains file is used in the RMSF plot to "
-                                    "display a map of the domains. If the mask do not cover all the domains in the "
-                                    "file, the domains argument should not be used. the domains file is a comma "
-                                    "separated file, the first column is the annotation name, the 2nd is the residue "
-                                    "start coordinate, the 3rd is the residue end coordinate, the last one is the "
-                                    "color to apply in hexadecimal format. The coordinate are 1-indexed.")
+                               help="the path to the CSV domains file. The domains file is used in the plot to display "
+                                    "a map of the domains. If the mask do not cover all the domains in the file, the "
+                                    "domains argument should not be used. the domains file is a comma separated file, "
+                                    "the first column is the annotation name, the 2nd is the residue start coordinate, "
+                                    "the 3rd is the residue end coordinate, the last one is the color to apply in "
+                                    "hexadecimal format. The coordinate are 1-indexed.")
     parent_parser.add_argument("-y", "--format", required=False, default="svg",
                         choices=["eps", "jpg", "jpeg", "pdf", "pgf", "png", "ps", "raw", "svg", "svgz", "tif", "tiff"],
                         help="the output plots out_format: 'eps': 'Encapsulated Postscript', "
@@ -402,9 +410,7 @@ if __name__ == "__main__":
 
     if args.alphafold_version == "alphafold2":
         feature_dict = pickle.load(open(os.path.join(args.input, "features.pkl"), "rb"))
-
         model_dicts = get_models_data_alphafold2(args.input)
-
         # plot the MSA with coverage
         plot_msa_with_coverage(feature_dict["msa"], args.out, name, args.format)
     elif args.alphafold_version == "alphafold3":
