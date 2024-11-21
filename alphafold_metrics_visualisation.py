@@ -306,8 +306,8 @@ def plot_pae(data, out_dir, run_id, out_format, domains_path):
         else:
             fig, ax0 = plt.subplots(1, 1)
 
-        fig.suptitle(f"Predicted Alignment Error {model.replace('_', ' ')}:\n{run_id}", fontsize="large",
-                     fontweight="bold")
+        fig.suptitle(f"Predicted Alignment Error {model.replace('_', ' ')}:\n{run_id.replace('_', ' ')}",
+                     fontsize="large", fontweight="bold")
         heatmap = ax0.imshow(data[model]["pae"], label=model, cmap="bone", vmin=0, vmax=30)
         fig.colorbar(heatmap, ax=ax0, label="Expected Position Error (\u212B)")
         ax0.set_xlabel("Scored Residue")
