@@ -7,7 +7,7 @@ Created on 31 Jul. 2024
 __author__ = "Nicolas JEANNE"
 __copyright__ = "GNU General Public License"
 __email__ = "jeanne.n@chu-toulouse.fr"
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 
 import argparse
@@ -75,6 +75,10 @@ def get_data_ranking(path, alphafold_version):
     no_match_any_file = True
     if alphafold_version == "alphafold2":
         data = json.load(open(os.path.join(path, "ranking_debug.json"), "r"))["plddts"]
+    elif alphafold_version == "alphafold3":
+        df = pd.read_csv(os.path.join(path, "ranking_scores.csv"), sep=",")
+        df = df.sort_values(["ranking_score"], ascending=False)
+        data[f"model_1"] = float(df["ranking_score"].iloc[0])
     else:
         pattern_summary_confidences = re.compile(".+_summary_confidences_([0-4])\\.json")
         for alphafold3_file in os.listdir(path):
@@ -128,24 +132,32 @@ def get_models_data_alphafold2(input_dir):
     return data
 
 
-def get_models_data_alphafold3(input_dir):
+def get_models_data_alphafold3(input_dir, alphafold_version):
     """
     Extract the Alphafold3 models' data.
 
     :param input_dir: the path to the Alphafold3 output directory.
     :type input_dir: str
+    :param alphafold_version: the version of Alphafold.
+    :type alphafold_version: str
     :return: the models' extracted data.
     rtype: dict
     """
     data = {}
     no_match_any_file = True
-    pattern_full_data = re.compile(".+_full_data_([0-4])\\.json")
-    for alphafold3_file in os.listdir(input_dir):
-        match = pattern_full_data.search(alphafold3_file)
-        if match:
-            no_match_any_file = False
-            model_nb = match.group(1)
-            data[model_nb] = json.load(open(os.path.join(input_dir, alphafold3_file), "r"))
+    if alphafold_version == "alphafold3 server":
+        pattern_full_data = re.compile(".+_full_data_([0-4])\\.json")
+        for alphafold3_file in os.listdir(input_dir):
+            match = pattern_full_data.search(alphafold3_file)
+            if match:
+                no_match_any_file = False
+                model_nb = match.group(1)
+                data[model_nb] = json.load(open(os.path.join(input_dir, alphafold3_file), "r"))
+    else:
+        for alphafold3_file in os.listdir(input_dir):
+            if alphafold3_file.endswith("_confidences.json"):
+                no_match_any_file = False
+                data["1"] = json.load(open(os.path.join(input_dir, alphafold3_file), "r"))
 
     if no_match_any_file:
         logging.error(f"No match with an Alphafold3 full data result file found, check if the input directory is an "
@@ -153,6 +165,7 @@ def get_models_data_alphafold3(input_dir):
         sys.exit(1)
 
     return data
+
 
 
 def plot_msa_with_coverage(msa_data, out_dir, run_id, out_format):
@@ -383,7 +396,13 @@ if __name__ == "__main__":
     parser_alphafold3 = subparsers.add_parser("alphafold3", parents=[parent_parser], add_help=False,
                                               help="use the Alphafold3 outputs.")
     parser_alphafold3.add_argument("input", type=str,
-                                  help="the path to the Alphafold3 modeling directory.")
+                                   help="the path to the Alphafold3 modeling directory.")
+
+    # Alphafold3 server
+    parser_alphafold3_server = subparsers.add_parser("alphafold3 Server", parents=[parent_parser], add_help=False,
+                                                     help="use the Alphafold3 server outputs.")
+    parser_alphafold3_server.add_argument("input", type=str,
+                                          help="the path to the Alphafold3 server modeling directory.")
 
     args = parser.parse_args()
 
@@ -413,8 +432,8 @@ if __name__ == "__main__":
         model_dicts = get_models_data_alphafold2(args.input)
         # plot the MSA with coverage
         plot_msa_with_coverage(feature_dict["msa"], args.out, name, args.format)
-    elif args.alphafold_version == "alphafold3":
-        model_dicts = get_models_data_alphafold3(args.input)
+    elif args.alphafold_version.startswith("alphafold3"):
+        model_dicts = get_models_data_alphafold3(args.input, args.alphafold_version)
 
     # get the pLLDT and PAE values per model
     pae_plddt_per_model = get_pae_plddt(model_dicts, args.alphafold_version)
