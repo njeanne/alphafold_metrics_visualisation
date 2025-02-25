@@ -155,7 +155,7 @@ def get_models_data_alphafold3(input_dir, alphafold_version):
                 data[model_nb] = json.load(open(os.path.join(input_dir, alphafold3_file), "r"))
     else:
         for alphafold3_file in os.listdir(input_dir):
-            if alphafold3_file.endswith("_confidences.json"):
+            if alphafold3_file.endswith("_confidences.json") and "summary" not in alphafold3_file:
                 no_match_any_file = False
                 data["1"] = json.load(open(os.path.join(input_dir, alphafold3_file), "r"))
 
