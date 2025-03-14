@@ -14,7 +14,7 @@ A [conda](https://docs.conda.io/projects/conda/en/latest/index.html) YAML enviro
 The conda environment is created using the command:
 ```shell script
 # create the environment
-conda conda_env create -f conda_env/alphafold_metrics_visualisation_env.yml
+conda env create -f conda_env/alphafold_metrics_visualisation_env.yml
 
 # activate the environment
 conda activate alphafold_metrics_visualisation
