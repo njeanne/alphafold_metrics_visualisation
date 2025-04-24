@@ -7,13 +7,12 @@ Created on 31 Jul. 2024
 __author__ = "Nicolas JEANNE"
 __copyright__ = "GNU General Public License"
 __email__ = "jeanne.n@chu-toulouse.fr"
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 
 import argparse
 import json
 import logging
-import math
 import os
 import pickle
 import re
@@ -327,11 +326,12 @@ def plot_pae(data, out_dir, run_id, out_format, domains_path):
             # Add the domains' plot
             fig, (ax0, ax1) = plt.subplots(2, 1, height_ratios=[5, 1], sharex=True)
             features = []
-            row = None
+            # get the sequence length
+            sequence_length = len(data[model]["pae"])
             for _, row in domains.iterrows():
                 features.append(GraphicFeature(start=row["start"], end=row["end"], strand=+1, color=row["color"],
                                                label=row["domain"]))
-            record = GraphicRecord(sequence_length=row["end"] + 1, features=features, plots_indexing="genbank")
+            record = GraphicRecord(sequence_length=sequence_length, features=features, plots_indexing="genbank")
             record.plot(ax=ax1)
         else:
             fig, ax0 = plt.subplots(1, 1)
