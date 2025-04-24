@@ -13,6 +13,7 @@ __version__ = "1.1.0"
 import argparse
 import json
 import logging
+import math
 import os
 import pickle
 import re
@@ -73,12 +74,16 @@ def get_data_ranking(path, alphafold_version):
     """
     data = {}
     no_match_any_file = True
+    models_scores = {}
     if alphafold_version == "alphafold2":
         data = json.load(open(os.path.join(path, "ranking_debug.json"), "r"))["plddts"]
+        models_scores = data
     elif alphafold_version == "alphafold3":
         df = pd.read_csv(os.path.join(path, "ranking_scores.csv"), sep=",")
         df = df.sort_values(["ranking_score"], ascending=False)
         data[f"model_1"] = float(df["ranking_score"].iloc[0])
+        for _, row in df.iterrows():
+            models_scores[f"seed-{int(row['seed'])}_sample-{int(row['sample'])}"] = float(row["ranking_score"])
     else:
         pattern_summary_confidences = re.compile(".+_summary_confidences_([0-4])\\.json")
         for alphafold3_file in os.listdir(path):
@@ -87,14 +92,27 @@ def get_data_ranking(path, alphafold_version):
                 no_match_any_file = False
                 model_nb = match.group(1)
                 data[f"model_{model_nb}"] = json.load(open(os.path.join(path, alphafold3_file), "r"))["ranking_score"]
-
+        models_scores = data
         if no_match_any_file:
             logging.error(
                 f"No match with an Alphafold3 result summary confidence file found, check if the input directory is an "
                 f"Alphafold3 result directory: {args.input}")
             sys.exit(1)
+
+    # display info on the best models
+    best_models = []
+    best_model_score = float("-inf")
+    for model in models_scores:
+        if models_scores[model] >= best_model_score:
+            best_model_score = models_scores[model]
+            best_models.append(model)
+    logging.info(f"The best model{'s are' if len(best_models) > 1 else ' is'} {', '.join(best_models)} "
+                 f"{'(set as model_1) ' if alphafold_version == 'alphafold3' else ' '}with a "
+                 f"{'plddt value' if alphafold_version == 'alphafold2' else 'ranking score'} of {best_model_score}.")
+
     # order from the lowest to the highest to print the model with the highest value on top of the others
     data = dict(sorted(data.items(), key=lambda item: item[1], reverse=False))
+
     return data
 
 
@@ -421,7 +439,7 @@ if __name__ == "__main__":
 
     # extract the data
     name = os.path.basename(os.path.normpath(args.input))
-    logging.info(f"{args.alphafold_version.capitalize()} metrics visualisation for {name}.")
+    logging.info(f"{args.alphafold_version.capitalize()} metrics visualisation for {name}")
 
     model_dicts = None
     ranking_dict = get_data_ranking(args.input, args.alphafold_version)
