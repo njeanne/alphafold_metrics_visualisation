@@ -35,6 +35,9 @@ conda activate alphafold_metrics_visualisation
 # for the Alphafold3 metrics visualisation help
 ./alphafold_metrics_visualisation.py alphafold3 --help
 
+# for the Alphafold3 Server (https://alphafoldserver.com/) metrics visualisation help
+./alphafold_metrics_visualisation.py alphafold3_server --help
+
 conda deactivate
 ```
 

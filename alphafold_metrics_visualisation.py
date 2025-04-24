@@ -95,7 +95,6 @@ def get_data_ranking(path, alphafold_version):
             sys.exit(1)
     # order from the lowest to the highest to print the model with the highest value on top of the others
     data = dict(sorted(data.items(), key=lambda item: item[1], reverse=False))
-
     return data
 
 
@@ -145,7 +144,7 @@ def get_models_data_alphafold3(input_dir, alphafold_version):
     """
     data = {}
     no_match_any_file = True
-    if alphafold_version == "alphafold3 server":
+    if alphafold_version == "alphafold3_server":
         pattern_full_data = re.compile(".+_full_data_([0-4])\\.json")
         for alphafold3_file in os.listdir(input_dir):
             match = pattern_full_data.search(alphafold3_file)
@@ -399,7 +398,7 @@ if __name__ == "__main__":
                                    help="the path to the Alphafold3 modeling directory.")
 
     # Alphafold3 server
-    parser_alphafold3_server = subparsers.add_parser("alphafold3 Server", parents=[parent_parser], add_help=False,
+    parser_alphafold3_server = subparsers.add_parser("alphafold3_server", parents=[parent_parser], add_help=False,
                                                      help="use the Alphafold3 server outputs.")
     parser_alphafold3_server.add_argument("input", type=str,
                                           help="the path to the Alphafold3 server modeling directory.")
