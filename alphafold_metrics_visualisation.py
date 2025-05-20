@@ -7,7 +7,7 @@ Created on 31 Jul. 2024
 __author__ = "Nicolas JEANNE"
 __copyright__ = "GNU General Public License"
 __email__ = "jeanne.n@chu-toulouse.fr"
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 
 import argparse
@@ -177,14 +177,51 @@ def get_models_data_alphafold3(input_dir, alphafold_version):
 
     if no_match_any_file:
         logging.error(f"No match with an Alphafold3 full data result file found, check if the input directory is an "
-                      f"Alphafold3 result directory: {args.input}")
+                      f"Alphafold3 result directory: {input_dir}")
         sys.exit(1)
 
     return data
 
 
+def extract_domains(path):
+    """
+    Extract the domains' data.
 
-def plot_msa_with_coverage(msa_data, out_dir, run_id, out_format):
+    :param path: the path to the domains' CSV file.
+    :type path: str
+    :return: the domains' data.
+    :rtype: pandas.Dataframe
+    """
+    data = None
+    if path is not None:
+        try:
+            data = pd.read_csv(path)
+        except FileNotFoundError as exc:
+            logging.error(exc)
+            sys.exit(1)
+    return data
+
+
+def domains_features_plot(data, sequence_length):
+    """
+    Create the graphic record to plot the domains.
+
+    :param data: the domains' data.
+    :type data: pandas.Dataframe
+    :param sequence_length: the length of the sequence used as X axis.
+    :type sequence_length: int
+    :return: the graphic record of the domains.
+    :rtype: dna_features_viewer.GraphicRecord
+    """
+    features = []
+    for _, row in data.iterrows():
+        features.append(GraphicFeature(start=row["start"], end=row["end"], strand=+1, color=row["color"],
+                                       label=row["domain"]))
+    record = GraphicRecord(sequence_length=sequence_length, features=features, plots_indexing="genbank")
+    return record
+
+
+def plot_msa_with_coverage(msa_data, out_dir, run_id, out_format, domains_path):
     """
     Plot the Alphafold Multiple Sequence Alignment with the coverage information.
 
@@ -196,6 +233,8 @@ def plot_msa_with_coverage(msa_data, out_dir, run_id, out_format):
     :type run_id: str
     :param out_format: toe output out_format.
     :type out_format: str
+    :param domains_path: the domains' coordinates and info file path.
+    :type domains_path: str
     """
     seq_id = (np.array(msa_data[0] == msa_data).mean(-1))
     seq_id_sort = seq_id.argsort()
@@ -203,16 +242,31 @@ def plot_msa_with_coverage(msa_data, out_dir, run_id, out_format):
     non_gaps[non_gaps == 0] = np.nan
     final = non_gaps[seq_id_sort] * seq_id[seq_id_sort, None]
 
-    plt.subplots()
-    plt.suptitle(f"Sequence coverage:\n{run_id}", fontsize="large", fontweight="bold")
-    plt.imshow(final, interpolation="nearest", aspect="auto", cmap="rainbow_r", vmin=0, vmax=1, origin="lower")
-    plt.plot((msa_data != 21).sum(0), color="black")
-    plt.xlim(-0.5, msa_data.shape[1] - 0.5)
-    plt.ylim(-0.5, msa_data.shape[0] - 0.5)
-    plt.colorbar(label="Sequence identity to query")
-    plt.xlabel("Positions")
-    plt.ylabel("Sequences")
+    plt.clf()
+    domains = extract_domains(domains_path)
+    if domains is not None:
+        # Add the domains' plot
+        fig, (ax0, ax1) = plt.subplots(2, 1, height_ratios=[5, 1], sharex=True)
+        record_domains = domains_features_plot(domains, sequence_length=msa_data.shape[1])
+        record_domains.plot(ax=ax1)
+        ax1.set_xlabel("Positions")
+    else:
+        fig, ax0 = plt.subplots(1, 1)
+        ax0.set_xlabel("Positions")
+
+    fig.suptitle(f"Sequence coverage:\n{run_id}", fontsize="large", fontweight="bold")
+    ax0.plot((msa_data != 21).sum(0), color="black")
+    heatmap_aln = ax0.imshow(final, interpolation="nearest", aspect="auto", cmap="rainbow_r", vmin=0, vmax=1,
+                             origin="lower")
+    fig.colorbar(heatmap_aln, ax=ax0, label="Sequence identity to query")
+    ax0.set_xlim(-0.5, msa_data.shape[1] - 0.5)
+    ax0.set_ylim(-0.5, msa_data.shape[0] - 0.5)
+    ax0.set_ylabel("Sequences")
     plt.tight_layout()
+    if domains is not None:
+        # shrink the domains' X axis to the heatmap X axis size
+        ax0_positions, ax1_positions = ax0.get_position(), ax1.get_position()
+        ax1.set_position([ax0_positions.x0, ax1_positions.y0, ax0_positions.width, ax1_positions.height])
     path = os.path.join(out_dir, f"msa_coverage_{run_id}.{out_format}")
     plt.savefig(path)
     logging.info(f"MSA coverage plot: {path}")
@@ -312,35 +366,23 @@ def plot_pae(data, out_dir, run_id, out_format, domains_path):
     :type domains_path: str
     """
     models = sorted(list(data.keys()))
-    domains = None
-    if domains_path is not None:
-        try:
-            domains = pd.read_csv(args.domains)
-        except FileNotFoundError as exc:
-            logging.error(exc)
-            sys.exit(1)
-
+    domains = extract_domains(domains_path)
     for model in models:
         plt.clf()
         if domains is not None:
             # Add the domains' plot
             fig, (ax0, ax1) = plt.subplots(2, 1, height_ratios=[5, 1], sharex=True)
-            features = []
-            # get the sequence length
-            sequence_length = len(data[model]["pae"])
-            for _, row in domains.iterrows():
-                features.append(GraphicFeature(start=row["start"], end=row["end"], strand=+1, color=row["color"],
-                                               label=row["domain"]))
-            record = GraphicRecord(sequence_length=sequence_length, features=features, plots_indexing="genbank")
-            record.plot(ax=ax1)
+            record_domains = domains_features_plot(domains, sequence_length=len(data[model]["pae"]))
+            record_domains.plot(ax=ax1)
+            ax1.set_xlabel("Scored Residue")
         else:
             fig, ax0 = plt.subplots(1, 1)
+            ax0.set_xlabel("Scored Residue")
 
         fig.suptitle(f"Predicted Alignment Error {model.replace('_', ' ')}:\n{run_id.replace('_', ' ')}",
                      fontsize="large", fontweight="bold")
         heatmap = ax0.imshow(data[model]["pae"], label=model, cmap="bone", vmin=0, vmax=30)
         fig.colorbar(heatmap, ax=ax0, label="Expected Position Error (\u212B)")
-        ax0.set_xlabel("Scored Residue")
         ax0.set_ylabel("Aligned Residue")
         ax0.set_ylim(len(data[model]["pae"]) + 1, 1)
 
@@ -353,6 +395,7 @@ def plot_pae(data, out_dir, run_id, out_format, domains_path):
         path = os.path.join(out_dir, f"PAE_{model.replace('_', '-')}_{run_id}.{out_format}")
         plt.savefig(path)
         logging.info(f"PAE plot {model.replace('_', ' ')}: {path}")
+
 
 
 if __name__ == "__main__":
@@ -448,7 +491,7 @@ if __name__ == "__main__":
         feature_dict = pickle.load(open(os.path.join(args.input, "features.pkl"), "rb"))
         model_dicts = get_models_data_alphafold2(args.input)
         # plot the MSA with coverage
-        plot_msa_with_coverage(feature_dict["msa"], args.out, name, args.format)
+        plot_msa_with_coverage(feature_dict["msa"], args.out, name, args.format, args.domains)
     elif args.alphafold_version.startswith("alphafold3"):
         model_dicts = get_models_data_alphafold3(args.input, args.alphafold_version)
 
